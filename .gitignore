@@ -1,32 +1,125 @@
-# Archivos de Python
+# ================================================
+# DETECTOR DE FLORES OAK-1 - GITIGNORE
+# ================================================
+# Archivo de exclusiones para Git
+# Evita subir archivos innecesarios al repositorio
+# ================================================
+
+# === ARCHIVOS PYTHON ===
+# Bytecode compilado de Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 
-# Entorno virtual
+# Distribución / empaquetado
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# === ENTORNOS VIRTUALES ===
+# Entornos virtuales de Python
+.env
 .venv/
 venv/
 env/
 ENV/
+env.bak/
+venv.bak/
+.python-version
 
-# Archivos del sistema
-.DS_Store
+# === ARCHIVOS DEL SISTEMA ===
+# Windows
 Thumbs.db
+Desktop.ini
+$RECYCLE_BIN/
 
-# IDE
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.directory
+
+# === IDEs Y EDITORES ===
+# VS Code
 .vscode/
+*.code-workspace
+
+# PyCharm
 .idea/
+
+# Otros editores
 *.swp
 *.swo
 
-# Logs
+# === LOGS Y TEMPORALES ===
+# Archivos de log
 *.log
+*.out
+*.err
 
 # Archivos temporales
 *.tmp
 *.temp
+*~
 
-# Archivos específicos del proyecto
+# === MODELOS Y DATOS ===
+# Otros formatos de modelo (mantener solo .blob)
 *.onnx
 *.pt
+*.tflite
+*.weights
+*.h5
+
+# EXCEPCIÓN: Mantener modelo principal
+!best.blob
+
+# Datasets y datos grandes
+data/
+datasets/
+*.csv
+*.pkl
+
+# === TESTING Y DESARROLLO ===
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints
+
+# === ARCHIVOS MULTIMEDIA DE PRUEBA ===
+# Videos y imágenes de test
+test_videos/
+sample_images/
+*.mp4
+*.avi
+*.jpg
+*.jpeg
+*.png
+
+# EXCEPCIÓN: Mantener imágenes de docs
+!docs/**/*.png
+!README_assets/**/*
+
+# ================================================

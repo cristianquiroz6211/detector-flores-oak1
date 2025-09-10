@@ -1,0 +1,55 @@
+# ================================================
+# DETECTOR DE FLORES OAK-1 - DEPENDENCIAS
+# ================================================
+# Sistema de detección de flores en tiempo real
+# con cámara OAK-1 y modelo YOLO personalizado
+# 
+# Instalación: pip install -r requirements.txt
+# Autor: Cristian Quiroz
+# ================================================
+
+# === DEPENDENCIAS PRINCIPALES ===
+# Framework DepthAI para cámara OAK-1
+depthai==2.24.0.0
+
+# OpenCV para procesamiento de imagen y visualización
+opencv-python==4.9.0.80
+
+# NumPy para operaciones matemáticas y arrays
+numpy==1.26.4
+
+# === DEPENDENCIAS ADICIONALES ===
+# Pillow para manejo avanzado de imágenes
+Pillow==10.3.0
+
+# Pathlib ya viene incluido en Python 3.4+ (no necesario instalar)
+# pathlib
+
+# === HERRAMIENTAS DE DESARROLLO (OPCIONAL) ===
+# Descomenta estas líneas si planeas contribuir al desarrollo:
+
+# # Framework de testing
+# pytest==8.2.0
+
+# # Formateador de código Python
+# black==24.4.0
+
+# # Linter para análisis de código
+# flake8==7.0.0
+
+# === NOTAS DE INSTALACIÓN ===
+# 
+# 1. Python 3.8+ requerido
+# 2. Cámara OAK-1 debe estar conectada
+# 3. Para desarrollo, instalar dependencias opcionales:
+#    pip install pytest black flake8
+# 
+# 4. Verificar instalación:
+#    python -c "import depthai; print('✅ DepthAI OK')"
+#    python -c "import cv2; print('✅ OpenCV OK')"
+# 
+# 5. En caso de errores con OpenCV:
+#    pip uninstall opencv-python opencv-python-headless
+#    pip install opencv-python==4.9.0.80
+# 
+# ================================================

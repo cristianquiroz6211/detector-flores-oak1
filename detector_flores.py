@@ -2,9 +2,35 @@
 # -*- coding: utf-8 -*-
 
 """
-Detector de flores OAK-1 optimizado
-Modelo: best.blob (2 clases: flores listas para corte vs no listas)
-Configuración específica para detección de flores con cajas pequeñas
+Detector de Flores OAK-1 - Sistema de Clasificación Automática
+==============================================================
+
+Este sistema utiliza una cámara OAK-1 (OpenCV AI Kit) junto con un modelo YOLO 
+personalizado para detectar y clasificar flores en tiempo real, determinando si 
+están listas para el corte o no.
+
+Características principales:
+- Detección en tiempo real usando modelo YOLO optimizado (best.blob)
+- Clasificación binaria: flores listas para corte vs. no listas
+- Interfaz visual con cajas de detección y estadísticas
+- Controles interactivos para ajustar parámetros en tiempo real
+- Filtros específicos para flores (tamaño, forma, confianza)
+- Sistema de Non-Maximum Suppression (NMS) para eliminar detecciones duplicadas
+
+Autor: Sistema de detección de flores
+Versión: 1.0
+Fecha: 2025
+Licencia: MIT
+
+Requisitos de hardware:
+- Cámara OAK-1 (OpenCV AI Kit)
+- Computadora con USB 3.0+
+- Sistema operativo: Windows/Linux/macOS
+
+Dependencias:
+- depthai>=2.24.0.0
+- opencv-python>=4.9.0.80
+- numpy>=1.26.4
 """
 
 import cv2
@@ -13,40 +39,90 @@ import numpy as np
 from pathlib import Path
 import time
 
-# Configuración para detección de flores
-BLOB_PATH = "best.blob"
-INPUT_SIZE = (640, 640)
-CLASSES = ["flor_lista_corte", "flor_no_lista"]  # Nombres específicos para flores
-COLORS = [(0, 255, 0), (0, 165, 255)]  # Verde brillante, Naranja
-CONFIDENCE_THRESHOLD = 0.75  # Umbral alto para evitar detecciones aleatorias
-NMS_THRESHOLD = 0.4
+# =============================================================================
+# CONFIGURACIÓN DEL SISTEMA
+# =============================================================================
+
+# Rutas y archivos del modelo
+BLOB_PATH = "best.blob"  # Modelo YOLO convertido para OAK-1
+
+# Configuración de entrada del modelo
+INPUT_SIZE = (640, 640)  # Resolución de entrada requerida por el modelo YOLO
+
+# Definición de clases del modelo
+CLASSES = [
+    "flor_lista_corte",  # Clase 0: Flores listas para ser cortadas
+    "flor_no_lista"      # Clase 1: Flores que aún no están listas
+]
+
+# Configuración visual (colores para cada clase)
+COLORS = [
+    (0, 255, 0),    # Verde brillante para flores listas (clase 0)
+    (0, 165, 255)   # Naranja para flores no listas (clase 1)
+]
+
+# Parámetros de detección
+CONFIDENCE_THRESHOLD = 0.75  # Umbral inicial de confianza (75%) - ajustable en tiempo real
+NMS_THRESHOLD = 0.4          # Umbral para Non-Maximum Suppression (40%)
+
+# Límites para filtros de flores
+MIN_FLOWER_SIZE = 0.02       # Tamaño mínimo de flor (2% del frame)
+MAX_FLOWER_SIZE = 0.5        # Tamaño máximo de flor (50% del frame)
+MIN_ASPECT_RATIO = 0.3       # Relación de aspecto mínima
+MAX_ASPECT_RATIO = 3.0       # Relación de aspecto máxima
+MIN_AREA_THRESHOLD = 0.01    # Área mínima válida (1% del frame)
+MAX_DETECTIONS = 20          # Máximo número de flores detectables por frame
 
 def create_pipeline():
-    """Pipeline optimizado para detección de flores"""
+    """
+    Crear pipeline de DepthAI optimizado para detección de flores.
+    
+    Esta función configura la pipeline de procesamiento que conecta la cámara OAK-1
+    con la red neuronal YOLO. Define el flujo de datos desde la captura de imagen
+    hasta la inferencia del modelo.
+    
+    Configuración de la cámara:
+    - Resolución: 1080p para máxima calidad
+    - Tamaño de preview: 640x640 (requerido por el modelo)
+    - Formato: BGR (compatible con OpenCV)
+    - FPS: 30 para procesamiento en tiempo real
+    
+    Configuración de la red neuronal:
+    - Pool de frames: 4 (para mejor rendimiento)
+    - Hilos de inferencia: 2 (procesamiento paralelo)
+    
+    Returns:
+        dai.Pipeline: Pipeline configurada y lista para usar con el dispositivo OAK-1
+        
+    Raises:
+        RuntimeError: Si hay problemas al crear los nodos de la pipeline
+    """
     pipeline = dai.Pipeline()
     
-    # Cámara con configuración optimizada
+    # Configuración de la cámara RGB
     cam = pipeline.create(dai.node.ColorCamera)
-    cam.setPreviewSize(*INPUT_SIZE)
+    cam.setPreviewSize(*INPUT_SIZE)  # Establecer tamaño requerido por el modelo
     cam.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
-    cam.setInterleaved(False)
-    cam.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
-    cam.setFps(30)
+    cam.setInterleaved(False)        # Formato planar para mejor rendimiento
+    cam.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)  # Compatible con OpenCV
+    cam.setFps(30)                   # 30 FPS para tiempo real
     
-    # Red neuronal
+    # Configuración de la red neuronal
     nn = pipeline.create(dai.node.NeuralNetwork)
-    nn.setBlobPath(BLOB_PATH)
-    nn.setNumPoolFrames(4)
-    nn.setNumInferenceThreads(2)
+    nn.setBlobPath(BLOB_PATH)        # Cargar modelo YOLO
+    nn.setNumPoolFrames(4)           # Buffer para mejor rendimiento
+    nn.setNumInferenceThreads(2)     # Procesamiento paralelo
     
-    # Conexiones
-    cam.preview.link(nn.input)
+    # Conexiones del pipeline
+    cam.preview.link(nn.input)       # Conectar cámara -> red neuronal
     
-    # Salidas
+    # Configuración de salidas
+    # Salida de la cámara (para visualización)
     cam_out = pipeline.create(dai.node.XLinkOut)
     cam_out.setStreamName("cam")
     cam.preview.link(cam_out.input)
     
+    # Salida de la red neuronal (para detecciones)
     nn_out = pipeline.create(dai.node.XLinkOut)
     nn_out.setStreamName("nn")
     nn.out.link(nn_out.input)
@@ -55,12 +131,44 @@ def create_pipeline():
 
 def parse_yolo_detections(output, confidence_threshold=0.7, nms_threshold=0.4):
     """
-    Parsear salida YOLO optimizada para detección de flores
+    Procesar la salida del modelo YOLO para extraer detecciones válidas de flores.
+    
+    Esta función es el corazón del sistema de detección. Toma la salida cruda del
+    modelo YOLO y la convierte en detecciones útiles mediante varios filtros y
+    procesamiento especializado para flores.
+    
+    Proceso de filtrado:
+    1. Reshape de datos YOLO (50400 valores -> 7200 detecciones x 7 parámetros)
+    2. Normalización de probabilidades usando softmax
+    3. Normalización de objectness usando sigmoid
+    4. Filtrado por confianza mínima
+    5. Filtrado por tamaño apropiado para flores
+    6. Filtrado por relación de aspecto válida
+    7. Validación de coordenadas
+    8. Non-Maximum Suppression (NMS) para eliminar duplicados
+    
+    Args:
+        output (np.array): Salida cruda del modelo YOLO (50400 valores)
+        confidence_threshold (float): Umbral mínimo de confianza (0.0-1.0)
+        nms_threshold (float): Umbral para NMS (0.0-1.0)
+    
+    Returns:
+        list: Lista de diccionarios con detecciones válidas, cada uno contiene:
+            - 'bbox': [x1, y1, x2, y2] coordenadas normalizadas (0-1)
+            - 'confidence': confianza final de la detección (0-1)
+            - 'class_id': ID de la clase (0=lista_corte, 1=no_lista)
+            - 'class_name': nombre de la clase
+            - 'objectness': score de objectness (0-1)
+            - 'class_prob': probabilidad de la clase (0-1)
+    
+    Note:
+        El modelo YOLO produce detecciones en formato:
+        [x_center, y_center, width, height, objectness, class_0_prob, class_1_prob]
     """
     output = np.array(output)
     
-    # YOLO formato: 50400 valores = 7200 detecciones × 7 valores
-    # Para flores: [x, y, w, h, objectness, class_0_prob, class_1_prob]
+    # Reforma de datos: 50400 valores = 7200 detecciones × 7 parámetros
+    # Formato YOLO: [x, y, w, h, objectness, class_0_prob, class_1_prob]
     num_detections = len(output) // 7
     detections = output.reshape(num_detections, 7)
     
@@ -69,46 +177,52 @@ def parse_yolo_detections(output, confidence_threshold=0.7, nms_threshold=0.4):
     for detection in detections:
         x, y, w, h, objectness, class_0_prob, class_1_prob = detection
         
-        # Normalizar probabilidades de clase (softmax)
+        # === NORMALIZACIÓN DE PROBABILIDADES ===
+        # Aplicar softmax a las probabilidades de clase para normalización
         class_probs = np.array([class_0_prob, class_1_prob])
-        exp_probs = np.exp(class_probs - np.max(class_probs))  # Para estabilidad numérica
+        exp_probs = np.exp(class_probs - np.max(class_probs))  # Estabilidad numérica
         class_probs = exp_probs / np.sum(exp_probs)
         
+        # Determinar clase con mayor probabilidad
         class_id = np.argmax(class_probs)
         class_confidence = class_probs[class_id]
         
-        # Normalizar objectness (sigmoid)
+        # Normalizar objectness usando función sigmoid
         objectness = 1 / (1 + np.exp(-objectness))
         
-        # Confianza final
+        # Calcular confianza final combinando objectness y confianza de clase
         final_confidence = objectness * class_confidence
         
-        # Filtros para flores:
-        # 1. Confianza mínima más alta
+        # === FILTROS DE VALIDACIÓN ===
+        
+        # Filtro 1: Confianza mínima
         if final_confidence < confidence_threshold:
             continue
             
-        # 2. Tamaño de caja apropiado para flores (no muy grande, no muy pequeña)
-        if w < 0.02 or w > 0.5 or h < 0.02 or h > 0.5:  # Entre 2% y 50% del frame
+        # Filtro 2: Tamaño apropiado para flores
+        # Rechazar cajas muy pequeñas (ruido) o muy grandes (fondo)
+        if w < MIN_FLOWER_SIZE or w > MAX_FLOWER_SIZE or h < MIN_FLOWER_SIZE or h > MAX_FLOWER_SIZE:
             continue
             
-        # 3. Relación de aspecto razonable para flores
+        # Filtro 3: Relación de aspecto razonable para flores
+        # Las flores no deberían ser extremadamente alargadas
         aspect_ratio = w / h if h > 0 else 0
-        if aspect_ratio < 0.3 or aspect_ratio > 3.0:  # No muy alargadas
+        if aspect_ratio < MIN_ASPECT_RATIO or aspect_ratio > MAX_ASPECT_RATIO:
             continue
         
-        # 4. Coordenadas dentro de límites válidos
+        # Filtro 4: Coordenadas válidas (dentro del frame)
         if x < 0 or x > 1 or y < 0 or y > 1:
             continue
         
-        # Convertir coordenadas de centro a esquinas
-        x1 = max(0, min(1, x - w/2))
-        y1 = max(0, min(1, y - h/2))
-        x2 = max(0, min(1, x + w/2))
-        y2 = max(0, min(1, y + h/2))
+        # === CONVERSIÓN DE COORDENADAS ===
+        # Convertir de formato YOLO (centro + dimensiones) a coordenadas de esquinas
+        x1 = max(0, min(1, x - w/2))  # Esquina superior izquierda X
+        y1 = max(0, min(1, y - h/2))  # Esquina superior izquierda Y
+        x2 = max(0, min(1, x + w/2))  # Esquina inferior derecha X
+        y2 = max(0, min(1, y + h/2))  # Esquina inferior derecha Y
         
-        # Verificar que la caja tenga área válida
-        if (x2 - x1) > 0.01 and (y2 - y1) > 0.01:  # Área mínima del 1%
+        # Verificar área mínima válida
+        if (x2 - x1) > MIN_AREA_THRESHOLD and (y2 - y1) > MIN_AREA_THRESHOLD:
             valid_detections.append({
                 'bbox': [x1, y1, x2, y2],
                 'confidence': final_confidence,
@@ -118,21 +232,22 @@ def parse_yolo_detections(output, confidence_threshold=0.7, nms_threshold=0.4):
                 'class_prob': class_confidence
             })
     
-    # Aplicar Non-Maximum Suppression más estricto
+    # === NON-MAXIMUM SUPPRESSION (NMS) ===
+    # Eliminar detecciones duplicadas o superpuestas
     if len(valid_detections) > 0:
-        # Ordenar por confianza
+        # Ordenar por confianza (mayor primero)
         valid_detections = sorted(valid_detections, key=lambda x: x['confidence'], reverse=True)
         
-        # NMS manual para mejor control
+        # Aplicar NMS manual para mejor control
         final_detections = []
-        for i, det_a in enumerate(valid_detections):
+        for det_a in valid_detections:
             keep = True
-            for j, det_b in enumerate(final_detections):
-                # Calcular IoU
+            for det_b in final_detections:
+                # Calcular Intersection over Union (IoU)
                 box_a = det_a['bbox']
                 box_b = det_b['bbox']
                 
-                # Intersección
+                # Área de intersección
                 x1 = max(box_a[0], box_b[0])
                 y1 = max(box_a[1], box_b[1])
                 x2 = min(box_a[2], box_b[2])
@@ -146,6 +261,7 @@ def parse_yolo_detections(output, confidence_threshold=0.7, nms_threshold=0.4):
                     
                     if union > 0:
                         iou = intersection / union
+                        # Si IoU es alto, las cajas se superponen mucho
                         if iou > nms_threshold:
                             keep = False
                             break
@@ -153,20 +269,36 @@ def parse_yolo_detections(output, confidence_threshold=0.7, nms_threshold=0.4):
             if keep:
                 final_detections.append(det_a)
         
-        # Limitar número máximo de detecciones para flores
-        valid_detections = final_detections[:20]  # Máximo 20 flores por frame
+        # Limitar número máximo de detecciones
+        valid_detections = final_detections[:MAX_DETECTIONS]
     
     return valid_detections
 
 def get_overall_classification(detections):
     """
-    Obtener clasificación general basada en las detecciones de flores
+    Determinar la clasificación general basada en las detecciones individuales.
+    
+    Esta función analiza todas las detecciones de flores en el frame actual
+    y determina el estado general del campo/área observada.
+    
+    El algoritmo pondera las detecciones por su nivel de confianza, dando
+    más importancia a las flores detectadas con mayor certeza.
+    
+    Args:
+        detections (list): Lista de detecciones de flores validadas
+        
+    Returns:
+        tuple: (clase_predicha, confianza, probabilidades)
+            - clase_predicha (int): 0=flores_listas, 1=flores_no_listas
+            - confianza (float): confianza de la predicción (0-1)
+            - probabilidades (list): [prob_listas, prob_no_listas]
     """
     if not detections:
-        return 0, 0.5, [0.5, 0.5]  # Por defecto flores listas
+        # Si no hay detecciones, asumir estado neutral (flores listas)
+        return 0, 0.5, [0.5, 0.5]
     
-    # Contar detecciones por clase, ponderadas por confianza
-    class_scores = [0, 0]
+    # Calcular scores ponderados por confianza para cada clase
+    class_scores = [0, 0]  # [flores_listas, flores_no_listas]
     total_confidence = 0
     
     for det in detections:
@@ -175,16 +307,18 @@ def get_overall_classification(detections):
         class_scores[class_id] += confidence
         total_confidence += confidence
     
+    # Normalizar scores a probabilidades
     if total_confidence > 0:
         probs = [score / total_confidence for score in class_scores]
     else:
         probs = [0.5, 0.5]
     
-    # Normalizar probabilidades
+    # Asegurar que las probabilidades sumen 1
     total_prob = sum(probs)
     if total_prob > 0:
         probs = [p / total_prob for p in probs]
     
+    # Determinar clase predicha y confianza
     pred_class = np.argmax(probs)
     confidence = probs[pred_class]
     
